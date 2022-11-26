@@ -15,11 +15,30 @@ def rankine_hugoniot(mu, temp_u, p_u, gamma):
     return md, temp_d, pres_d
 
 
-def f_equilibrium(temp_r, nv, v_bar):
-    f_eq = np.ones([nv, 3])
+def f_equilibrium(m, k, temp_r, v_bar, v_arr):
+    # return maxwell boltzmann distribution
+    f_eq = np.ones([len(v_arr), 3])
+    if min(temp_r) <= 0:
+        print(temp_r)
 
+        raise Exception('not pos temp')
+    sigma_inv_mb = np.sqrt(m/(k*temp_r))
     for i in range(len(v_bar)):
-        sigma = np.sqrt(temp_r[i])
-        v_arr = np.linspace(v_bar[i]-4*sigma, v_bar[i]+4*sigma, nv)
-        f_eq[:, i] = (1/np.sqrt(2*np.pi*temp_r[i])) * np.exp(-((v_arr-v_bar[i])**2) / (2*temp_r[i]))
+        f_eq[:, i] = (sigma_inv_mb[i] / np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((v_arr-v_bar[i])*sigma_inv_mb[i])**2)
     return f_eq
+
+
+def get_macros(f_vdf, v_arr):
+    n_i = np.trapz(f_vdf[:, 0], v_arr)
+    v_bar_x = np.trapz(f_vdf[:, 0] * v_arr, v_arr) / np.trapz(f_vdf[:, 0], v_arr)
+    v_bar_y = np.trapz(f_vdf[:, 1] * v_arr, v_arr) / np.trapz(f_vdf[:, 1], v_arr)
+    v_bar_z = np.trapz(f_vdf[:, 2] * v_arr, v_arr) / np.trapz(f_vdf[:, 2], v_arr)
+    v2_bar_x = np.trapz(f_vdf[:, 0] * v_arr * v_arr, v_arr) / np.trapz(f_vdf[:, 0], v_arr)
+    v2_bar_y = np.trapz(f_vdf[:, 1] * v_arr * v_arr, v_arr) / np.trapz(f_vdf[:, 1], v_arr)
+    v2_bar_z = np.trapz(f_vdf[:, 2] * v_arr * v_arr, v_arr) / np.trapz(f_vdf[:, 2], v_arr)
+    temp_x = v2_bar_x - v_bar_x**2
+    temp_y = v2_bar_y - v_bar_y**2
+    temp_z = v2_bar_z - v_bar_z**2
+    temp_i = np.array([temp_x, temp_y, temp_z])
+    v_bar_i = np.array([v_bar_x, v_bar_y, v_bar_z])
+    return n_i, temp_i, v_bar_i
