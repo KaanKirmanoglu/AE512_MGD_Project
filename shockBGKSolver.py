@@ -81,6 +81,7 @@ class solverBGK:
         self.v_bar_t = []
         self.F_t = []
         self.t_arr = []
+        self.q_tau = []
 
     def initial_conditions(self):
         # set initial conditions as non-dimensionalized form
@@ -118,6 +119,7 @@ class solverBGK:
         pass
 
     def update_macros(self):
+        # Update Macroscopit quantities like density, temperature and also collision frequencies from VDF
         for i in range(self.mx):
             n_i, temp_i, v_bar_i = get_macros(self.F[i], self.c_hat)
             self.n_xi[i] = n_i
@@ -137,6 +139,8 @@ class solverBGK:
         pass
 
     def drift(self):
+        # Approximate drift/streaming term for BGK Equation using first order upwinding
+        # c_i*del(f)/del(x)
         v_dfdx: ndarray = np.zeros(self.F.shape)
         c_up = np.where(self.c_hat > 0, self.c_hat, 0)
         c_down = np.where(self.c_hat < 0, self.c_hat, 0)
@@ -154,6 +158,8 @@ class solverBGK:
         #   Apply drift function
 
     def collide(self):
+        # Calculate collision term for BGK equation
+        # (1/Kn*nu) * (f_eq - f)
         f_coll = np.zeros(self.F.shape)
         for i in range(self.mx):
             temps_coll = np.mean(self.temps[i]) * np.ones(self.temps[i].shape)
@@ -163,27 +169,32 @@ class solverBGK:
         return f_coll
 
     def bgk_ode(self, t, f):
+        # calculate time derivatives
+        # del(f)\del(t) = - c_i  * del(f)/del(x) + (1/Kn*nu) * (f_eq - f)
         self.F = np.reshape(f, self.F.shape)
         self.update_macros()
         dfdt = self.collide() - self.drift()
         c_up = np.where(self.c_hat > 0, 1, 0)
         c_down = np.where(self.c_hat < 0, 1, 0)
-        dfdt[0] = np.zeros(dfdt[0].shape)
-        dfdt[-1] = np.zeros(dfdt[-1].shape)
+        dfdt[0] = c_up[:, np.newaxis, np.newaxis] * dfdt[0]
+        dfdt[-1] = c_down[:, np.newaxis, np.newaxis] * dfdt[-1]
         # c_down[:, np.newaxis, np.newaxis] * dfdt[-1]
         return np.reshape(dfdt, dfdt.size)
 
     def bgk_ode2(self):
+        # calculate time derivatives
+        # del(f)\del(t) = - c_i  * del(f)/del(x) + (1/Kn*nu) * (f_eq - f)
         self.update_macros()
         dfdt = self.collide() - self.drift()
         c_up = np.where(self.c_hat > 0, 1, 0)
         c_down = np.where(self.c_hat < 0, 1, 0)
-        dfdt[0] = np.zeros(dfdt[0].shape)
-        dfdt[-1] = np.zeros(dfdt[-1].shape)
+        dfdt[0] = c_up[:, np.newaxis, np.newaxis] * dfdt[0]
+        dfdt[-1] = c_down[:, np.newaxis, np.newaxis] * dfdt[-1]
         # c_down[:, np.newaxis, np.newaxis] * dfdt[-1]
         return dfdt
 
     def execute_solver(self, t_s, solver_flag):
+        # Execute solver and return solutions as macro quantities, resulting VDF, heat flux and shear stresses
         global sol
         self.initial_conditions()
         if solver_flag == 0:
@@ -250,16 +261,17 @@ class solverBGK:
                 self.temps_t.append(self.temps_hat.copy())
                 self.n_xi_t.append(self.n_xi.copy())
                 self.v_bar_t.append(self.v_bar.copy())
-                self.F_t.append(self.F.copy())
 
 
-                print("Progress:")
-                print(100*t/t_s[-1])
+
+                print("Progress %:")
+                print(100 * t / t_s[-1])
                 # plt.figure()
                 # plt.plot(self.x_arr, self.temps_hat[:, 0], 'x')
                 # plt.show()
 
-
-            sol = [self.t_arr, self.F_t, self.temps_t, self.n_xi_t, self.v_bar_t]
+            for i in range(self.mx):
+                self.q_tau.append(get_qi_taux(self.m_ar, (self.C_r**3)*self.F[i], self.v_arr))
+            sol = [self.t_arr, self.F, self.temps_t, self.n_xi_t, self.v_bar_t, self.q_tau]
             self.update_macros()
         return sol

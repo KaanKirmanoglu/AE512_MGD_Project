@@ -12,194 +12,209 @@ def print_hi(name):
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
+    # initialize solver
     solver = shockBGKSolver.solverBGK()
-    print(solver.cs_u)
-    print(solver.v_bar_u)
-    fig_id = 1
+
     solver.initial_conditions()
 
-    plt.figure(0)
-    plt.plot(solver.x_arr, solver.temps[:, 0])
-
-    # plt.show()
     solver.update_macros()
-    temps_hat_0 = solver.temps_hat[:, 0].copy()
-    v_bar0 = solver.v_bar[:, 0].copy()
-    plt.plot(solver.x_arr, (solver.m_ar * solver.C_r * solver.C_r / solver.kb) * solver.temps_hat[:, 0], 'x')
-    # plt.show()
-    t_span0 = [0, 0.1]
-    t_span1 = np.linspace(0, 0.1, 101)
-    dt = 0.0002
-    t_span2 = dt*np.arange(10)
+
+    dt = 0.0001
+    t_span2 = dt * np.arange(900)
+    # run the solver with given timesteps, using first order upwind in time
     sol = solver.execute_solver(t_span2, 2)
+
+    # Chapman - Enskog Approximation
+    dlogTdx = log_temp_grad(solver.T_u, solver.T_d, np.mean(solver.temps, axis=1), solver.L_r * solver.dx)
+    dv_bardx = v_bar_grad(solver.v_bar_u, solver.v_bar_d, solver.C_r * solver.v_bar[:, 0], solver.L_r * solver.dx)
+    f_ce = np.empty(solver.F_0.shape)
+    for i in range(solver.mx):
+        f_ce[i] = chapman_enskog(solver.m_ar, solver.kb, np.mean(solver.temps[i]), solver.C_r * solver.v_bar[i],
+                                 solver.v_arr, solver.nu_r * solver.coll_fq[i], dlogTdx[i], dv_bardx[i])
+
+    # Plotting Solutions
+    """
+    ## Plotting Temperatures
     plt.figure()
-    plt.plot(solver.x_arr, temps_hat_0, 'o')
-    plt.plot(solver.x_arr, solver.temps_hat[:, 0], 'x', label='Tx')
-    plt.plot(solver.x_arr, solver.temps_hat[:, 1], 'd', label='Ty')
-    plt.plot(solver.x_arr, solver.temps_hat[:, 2], '*', label='Tz')
+    plt.plot(solver.x_hat, solver.temps_hat[:, 0], '-x', label=r'$\^T_{x}$')
+    plt.plot(solver.x_hat, solver.temps_hat[:, 1], '-d', label=r'$\^T_{y}$')
+    plt.plot(solver.x_hat, solver.temps_hat[:, 2], '-*', label=r'$\^T_{z}$')
+    plt.xlabel(r'$\^x$')
+    plt.ylabel(r'$\^T$')
+    plt.title(r'$\^x$ vs $\^T$, (Non-dimensionalized)')
     plt.legend()
+    plt.savefig('nonDTemps.png')
     plt.show()
-
 
 
     plt.figure()
-    plt.plot(solver.x_arr, v_bar0, 'o')
-    plt.plot(solver.x_arr, solver.v_bar[:, 0], 'x')
-    plt.show()
-
-    plt.figure()
-
-    temps_t = np.array(sol[2])
-    plt.plot(t_span2, temps_t[:, 24, 0])
-
-    plt.show()
-    v_bars = sol[4]
-    v_bars = v_bars[::50]
-    for t in range(len(v_bars)):
-        plt.plot(solver.x_arr, np.array(v_bars[t])[:, 0])
-    plt.show()
-
-    # Execute Solver
-    """
-    t_span = np.linspace(0, 0.11, 100)
-    sol = solver.execute_solver(t_span)
-    temps_t = []
-    n_xi_t = []
-    v_bar_t = []
-    F_t = []
-    t_arr = []
-    plt.figure()
-    for i in range(len(sol.t)):
-        t_arr.append(sol.t[i])
-        F_t.append(sol.y[:, i].reshape(solver.F_0.shape))
-        temp_hat_it = np.zeros([solver.mx, 3])
-        n_it_hat = np.zeros(solver.mx)
-        v_bar_hat_it = np.zeros([solver.mx, 3])
-        for x in range(len(solver.x_arr)):
-            n_i, temp_i, v_bar_i = get_macros(np.reshape(sol.y[:, i], solver.F_0.shape)[x], solver.c_hat)
-            temp_hat_it[x] = temp_i
-            n_it_hat[x] = n_i
-            v_bar_hat_it[x] = v_bar_i
-        plt.plot(solver.x_arr, temp_hat_it[:, 0])
-        temps_t.append(temp_hat_it)
-        n_xi_t.append(n_it_hat)
-        v_bar_t.append(v_bar_hat_it)
-
-    plt.show()
-    """
-
-
-    # solver.F = sol.y[:, -1].reshape(solver.F.shape)
-    # solver.update_macros()
-
-    # Chekc Dists
-    """
-    temp = solver.T_u
-    v_bar = np.array([solver.v_bar_u, 200, 0])
-    v_arr = np.linspace(-5500, 5500, 50)
-    vx, vy, vz = np.meshgrid(v_arr, v_arr, v_arr)
-    f_mb = f_mb(solver.m_ar, solver.kb, solver.T_u * np.ones(3), v_bar, v_arr)
-    f_0mb = np.zeros([50, 50, 50])
-    f_mbx = np.sqrt(solver.m_ar / (2 * temp * np.pi * solver.kb)) * np.exp(
-        -0.5 * solver.m_ar * ((v_arr - v_bar[0]) ** 2) / (solver.kb * temp))
-
-    for i in range(len(v_arr)):
-        for j in range(len(v_arr)):
-            for k in range(len(v_arr)):
-                norm_mb = (solver.m_ar / (2 * temp * np.pi * solver.kb)) ** 1.5
-                f_exp = (v_arr[i] - v_bar[0]) ** 2 + (v_arr[j] - v_bar[1]) ** 2 + (v_arr[k] - v_bar[2]) ** 2
-                f_0mb[i, j, k] = norm_mb * np.exp(-0.5 * solver.m_ar * f_exp / (solver.kb * temp))
-
-    v_arr2 = np.linspace(-50, 50, 11)
-
-    f_x = np.trapz(np.trapz(f_mb, v_arr), v_arr)
-    f_y = np.trapz(np.trapz(f_mb, v_arr), v_arr, axis=0)
-    f_z = np.trapz(np.trapz(f_mb, v_arr, axis=0), v_arr, axis=0)
-    n_x = np.trapz(f_x, v_arr)
-    n_y = np.trapz(f_y, v_arr)
-    n_z = np.trapz(f_z, v_arr)
-    v_bar_x = np.trapz(v_arr * f_x, v_arr) / n_x
-    v_bar_y = np.trapz(v_arr * f_y, v_arr) / n_y
-    v_bar_z = np.trapz(v_arr * f_z, v_arr) / n_z
-    v2_bar = np.trapz(v_arr * v_arr * f_x, v_arr) / n_x
-    v2_bar_y = np.trapz(v_arr * v_arr * f_y, v_arr) / n_y
-    v2_bar_z = np.trapz(v_arr * v_arr * f_z, v_arr) / n_z
-    mT_k = v2_bar - v_bar_x ** 2
-
-    Tx = mT_k * solver.m_ar / solver.kb
-    Ty = (solver.m_ar / solver.kb) * (v2_bar_y - v_bar_y ** 2)
-    Tz = (solver.m_ar / solver.kb) * (v2_bar_z - v_bar_z ** 2)
-    """
-
-    """
-    sol = solver.execute_solver()
-    solver.F = sol.y[:, -1].reshape(solver.F.shape)
-    solver.update_macros()
-    plt.figure()
-    plt.plot(solver.x_arr, solver.temps[:, 0], label='T_x')
-    plt.plot(solver.x_arr, solver.temps[:, 1], label='T_y')
-    plt.plot(solver.x_arr, solver.temps[:, 2], label='T_z')
-    plt.plot(solver.x_arr, temps_0, label='IC')
-    plt.xlabel('x')
-    plt.ylabel('T (K)')
+    plt.plot(solver.x_arr, solver.temps[:, 0], '-x', label=r'$T_{x}$')
+    plt.plot(solver.x_arr, solver.temps[:, 1], '-d', label=r'$T_{y}$')
+    plt.plot(solver.x_arr, solver.temps[:, 2], '-*', label=r'$T_{z}$')
+    plt.xlabel(r'$x$, (m)')
+    plt.ylabel(r'$T$, (K)')
+    plt.title(r'$x$ vs $T$')
     plt.legend()
+    plt.savefig('dimTemps.png')
+    plt.show()
+
+    ## Plotting densities
+    plt.figure()
+    plt.plot(solver.x_hat, solver.n_xi, '-x')
+    plt.xlabel(r'$\^x$')
+    plt.ylabel(r'$\^n$')
+    plt.title(r'$\^x$ vs $\^n$, (Non-dimensionalized)')
+    plt.savefig('nonDDens.png')
+    plt.show()
+
+
+
+    plt.figure()
+    plt.plot(solver.x_arr, solver.n_r*solver.n_xi, '-x')
+    plt.xlabel(r'$x$')
+    plt.ylabel(r'$n$')
+    plt.title(r'$x$ vs $n$')
+    plt.savefig('dimDens.png')
     plt.show()
     
-    sigma2_inv_mb = solver.m_ar / (solver.T_d * solver.kb)
-    v_arr = np.linspace(-5200, 5500, 400)
-    v_arr2 = np.linspace(-5200, 5500, 400)
-
-    f_mb = np.sqrt(sigma2_inv_mb)/(np.sqrt(2*np.pi)) * np.exp(-0.5*sigma2_inv_mb*(v_arr-solver.v_bar_d)*(v_arr-solver.v_bar_d))
-    f_mb2 = np.sqrt(sigma2_inv_mb) / (np.sqrt(2 * np.pi)) * np.exp(-0.5 * sigma2_inv_mb * v_arr2 * v_arr2)
+    ## Plotting VDFs
     plt.figure()
-    plt.plot(v_arr, f_mb)
-    plt.show()
-    int_n = np.trapz(f_mb, v_arr)
-    c_bar = np.trapz(v_arr * f_mb, v_arr) / int_n
-    c2_bar = np.trapz(v_arr * v_arr * f_mb, v_arr) / int_n
-    c2_res_bar = c2_bar - c_bar**2
-    c_r = solver.v_bar_u
-    c_bar_hat = 1
-    v_harr = v_arr/c_r
-    v_harry = v_arr2/c_r
-    t_hat = solver.T_u*solver.kb/(solver.m_ar * c_r * c_r)
+    for i in range(4):
+        xi = i + 23
+        fx = np.trapz(np.trapz(solver.F[xi], solver.c_hat))
+        nxi = np.trapz(fx, solver.c_hat)
+        fx = fx/nxi
+        lab = r"$\^x$=" + str(solver.x_hat[xi])
+        plt.plot(solver.c_hat, fx, label=lab)
 
-    f_hat_0 = c_r*f_mb
-    f_haty = c_r*f_mb2
-        #(1/(np.sqrt(2*np.pi * t_hat))) * np.exp(-0.5 * (v_harr - c_bar_hat) * (v_harr - c_bar_hat)
-         #                                                       / t_hat)
+    plt.ylabel(r'$\^f_{c_x}$')
+    plt.xlabel(r'$\^c_{x}$')
+    plt.legend(loc='upper left')
+    tit = "Normalized VDFs across shock"
+    plt.title(tit)
+    filename = "nonDimVDfs"
+    plt.savefig(filename)
+    plt.show()
+    plt.figure()
+    for j in range(4):
+        xi = j + 23
+        fx = np.trapz(np.trapz((solver.C_r**3)*solver.F[xi], solver.v_arr))
+        nxi = np.trapz(fx, solver.v_arr)
+        fx = fx/nxi
+        lab = "x=" + str(solver.x_arr[xi])
+        plt.plot(solver.v_arr, fx, label=lab)
+
+    plt.legend(loc='upper left')
+    plt.ylabel(r'$f_{c_x}$')
+    plt.xlabel(r'$c_{x}$ (m/s)')
+    tit = "VDFs across shock"
+    plt.title(tit)
+    filename = "dimVDfs"
+    plt.savefig(filename)
+    plt.show()
+    
+    ## Plotting heat fluxes and shear stress
+    
+    fluxes = np.array(sol[5])
+    plt.figure()
+    plt.plot(solver.x_arr, fluxes[:, 0])
+    plt.title("Heat Fluxes vs x")
+    plt.xlabel('x (m)')
+    plt.ylabel('Q ($W/m^2$)')
+    plt.savefig("heatFlux")
+    plt.show()
+    t_ref = solver.L_r/solver.C_r
+    plt.figure()
+    plt.plot(solver.x_hat, ((t_ref**3)/solver.m_ar)*fluxes[:, 0])
+    plt.title("Heat Fluxes vs x, non-dimensionalized")
+    plt.xlabel(r'$\^x$')
+    plt.ylabel(r'$\^Q$')
+    plt.savefig("nonDimHeatFlux")
+    plt.show()
 
     plt.figure()
-    plt.plot(v_harr, f_hat_0, 'x')
-    plt.plot(v_harry, f_haty, 'o')
+    plt.plot(solver.x_arr, fluxes[:, 1], '-x', label=r"$\tau_{xx}$")
+    plt.plot(solver.x_arr, fluxes[:, 2], '-o', label=r"$\tau_{yx}$")
+    plt.plot(solver.x_arr, fluxes[:, 3], '-*', label=r"$\tau_{zx}$")
+    plt.title("Shear Stress vs x")
+    plt.xlabel(r'$x$')
+    plt.ylabel(r'$\tau$')
+    plt.legend(loc='lower right')
+    plt.savefig("shearStress")
     plt.show()
 
-    int_h0 = np.trapz(f_hat_0, v_harr)
-    c_hat_bar = np.trapz(v_harr*f_hat_0, v_harr)/int_h0
-    c2_hat_bar = np.trapz(v_harr*v_harr*f_hat_0, v_harr)/int_h0
-    c2_hat_res_bar = c2_hat_bar - c_hat_bar**2
-    print(c2_hat_res_bar)
-"""
+    plt.figure()
+    plt.plot(solver.x_arr, (1 / solver.p_u) * fluxes[:, 1], '-x', label=r"$\^\tau_{xx}$")
+    plt.plot(solver.x_arr, (1 / solver.p_u) * fluxes[:, 2], '-o', label=r"$\^\tau_{yx}$")
+    plt.plot(solver.x_arr, (1 / solver.p_u) * fluxes[:, 3], '-*', label=r"$\^\tau_{zx}$")
+    plt.title("Shear Stress vs x, non-dimensionalized")
+    plt.xlabel(r'$\^x$')
+    plt.ylabel(r'$\^\tau$')
+    plt.legend(loc='lower right')
+    plt.savefig("nonDimShearStress")
+    plt.show()
+   
 
-    """
-    f_eq = np.ones([nv, 3])
-    v_arr_i = []
-    for i in range(len(v_bar)):
-        sigma = np.sqrt(temp_r[i])
-        v_arr = np.linspace(v_bar[i] - 4.2 * sigma, v_bar[i] + 4.2 * sigma, nv)
-        v_arr_i.append(v_arr)
-        # print(np.exp(-((v_arr - v_bar[i]) ** 2) / (2 * temp_r[i])))
-        f_eq[:, i] = (1 / np.sqrt(2 * np.pi * temp_r[i])) * np.exp(-((v_arr - v_bar[i]) ** 2) / (2 * temp_r[i]))
-        plt.figure(fig_id)
-        print(fig_id)
-        fig_id += 1
-        plt.plot(v_arr, f_eq[:, i], 'o')
+    ## Plotting Chapman-Enskog vs BGK solution
+
+    for j in range(4):
+        xi = j + 23
+        fx = np.trapz(np.trapz((solver.C_r ** 3) * solver.F[xi], solver.v_arr))
+        nxi = np.trapz(fx, solver.v_arr)
+        fx = fx / nxi
+        fx_ce = np.trapz(np.trapz(f_ce[xi], solver.v_arr))
+        fx_ce = fx_ce / np.trapz(fx_ce, solver.v_arr)
+        plt.figure()
+        lab = "BGK"
+        lab2 = "CE"
+        plt.plot(solver.v_arr, fx, label=lab)
+        plt.plot(solver.v_arr, fx_ce, '-x', label=lab2)
+        plt.legend(loc='upper left')
+        plt.ylabel(r'$f_{c_x}$')
+        plt.xlabel(r'$c_{x}$ (m/s)')
+        tit = "Chapman-Enskog vs BGK at x=" + str(solver.x_arr[xi])
+        plt.title(tit)
+        filename = "ceVsBGK" + str(xi) + ".png"
+        plt.savefig(filename, bbox_inches='tight')
         plt.show()
 
-    int_f1 = np.trapz(f_eq[:, 0], v_arr_i[0])
-    print(int_f1)
-    int_F_tot = np.trapz(f_eq[:, 0], v_arr_i[0]) * np.trapz(f_eq[:, 1], v_arr_i[1]) * np.trapz(f_eq[:, 2], v_arr_i[2])
-    print(int_F_tot)
-    # X,Y = np.meshgrid(range(inputs.nx)
-    print(f_eq[-1, 1])
-    """
+    xi = 8
+    plt.figure()
+    fx = np.trapz(np.trapz((solver.C_r ** 3) * solver.F[xi], solver.v_arr))
+    nxi = np.trapz(fx, solver.v_arr)
+    fx = fx / nxi
+    fx_ce = np.trapz(np.trapz(f_ce[xi], solver.v_arr))
+    fx_ce = fx_ce / np.trapz(fx_ce, solver.v_arr)
+    lab = "BGK"
+    lab2 = "CE"
+    plt.plot(solver.v_arr, fx, label=lab)
+    plt.plot(solver.v_arr, fx_ce, '-x', label=lab2)
+    plt.legend(loc='upper left')
+    plt.ylabel(r'$f_{c_x}$')
+    plt.xlabel(r'$c_{x}$ (m/s)')
+    tit = "Chapman-Enskog vs BGK at x=" + str(solver.x_arr[xi])
+    plt.title(tit)
+    filename = "ceVsBGK" + str(xi) + ".png"
+    plt.savefig(filename, bbox_inches='tight')
+    plt.show()
+
+    xi = 38
+
+    fx = np.trapz(np.trapz((solver.C_r ** 3) * solver.F[xi], solver.v_arr))
+    nxi = np.trapz(fx, solver.v_arr)
+    fx = fx / nxi
+    fx_ce = np.trapz(np.trapz(f_ce[xi], solver.v_arr))
+    fx_ce = fx_ce / np.trapz(fx_ce, solver.v_arr)
+    lab = "BGK"
+    lab2 = "CE"
+    plt.plot(solver.v_arr, fx, label=lab)
+    plt.plot(solver.v_arr, fx_ce, '-x', label=lab2)
+    plt.legend(loc='upper left')
+    plt.ylabel(r'$f_{c_x}$')
+    plt.xlabel(r'$c_{x}$ (m/s)')
+    tit = "Chapman-Enskog vs BGK at x=" + str(solver.x_arr[xi])
+    plt.title(tit)
+    filename = "ceVsBGK" + str(xi) + ".png"
+    plt.savefig(filename, bbox_inches='tight')
+    plt.show()
+"""
